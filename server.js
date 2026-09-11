@@ -2,8 +2,12 @@
 // Static server plus one API route that asks Claude for a side-effects summary.
 // Zero dependencies apart from the official Anthropic SDK.
 //
-// Set ANTHROPIC_API_KEY in Replit Secrets (never in the client). Without it the
-// route answers 503 and the page hides the feature.
+// Credentials come from the environment, never the client. Either set
+// ANTHROPIC_API_KEY (Replit Secrets), or on a host that mints OIDC identity tokens
+// set the Workload Identity Federation variables (ANTHROPIC_FEDERATION_RULE_ID,
+// ANTHROPIC_ORGANIZATION_ID, ANTHROPIC_SERVICE_ACCOUNT_ID, ANTHROPIC_IDENTITY_TOKEN_FILE)
+// and the SDK exchanges the token itself. With neither, the route answers 503 and
+// the page hides the feature.
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -17,6 +21,15 @@ let Anthropic = null;
 try { Anthropic = require('@anthropic-ai/sdk'); } catch (e) { console.warn('Anthropic SDK not installed; /api/analyze disabled. Run: npm install'); }
 
 const ROOT = path.join(__dirname, 'public');
+
+// True when the SDK's zero-argument client will find a credential: a static key,
+// a bearer token, or the full set of Workload Identity Federation variables.
+function hasCredentials() {
+  const e = process.env;
+  if (e.ANTHROPIC_API_KEY || e.ANTHROPIC_AUTH_TOKEN) return true;
+  return !!(e.ANTHROPIC_FEDERATION_RULE_ID && e.ANTHROPIC_ORGANIZATION_ID && e.ANTHROPIC_SERVICE_ACCOUNT_ID &&
+    (e.ANTHROPIC_IDENTITY_TOKEN_FILE || e.ANTHROPIC_IDENTITY_TOKEN));
+}
 const PORT = process.env.PORT || 8080;
 const MODEL = process.env.CLAUDE_MODEL || 'claude-opus-5';
 const TYPES = {
@@ -59,7 +72,7 @@ function readBody(req, limit) {
 }
 
 async function handleAnalyze(req, res) {
-  if (!Anthropic || !process.env.ANTHROPIC_API_KEY) return send(res, 503, { error: 'Analysis is not configured on this server.' });
+  if (!Anthropic || !hasCredentials()) return send(res, 503, { error: 'Analysis is not configured on this server.' });
   if (req.headers['x-requested-with'] !== 'deficit-calculator') return send(res, 400, { error: 'Bad request.' });
   if (!/^application\/json/.test(req.headers['content-type'] || '')) return send(res, 415, { error: 'Send JSON.' });
   const ip = clientIp(req);
@@ -132,7 +145,7 @@ http.createServer((req, res) => {
     if (req.method !== 'POST') { res.writeHead(405, { Allow: 'POST' }); return res.end(); }
     return handleAnalyze(req, res);
   }
-  if (url === '/api/status') return send(res, 200, { analysis: !!(Anthropic && process.env.ANTHROPIC_API_KEY) });
+  if (url === '/api/status') return send(res, 200, { analysis: !!(Anthropic && hasCredentials()) });
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
   serveStatic(req, res);
 }).listen(PORT, '0.0.0.0', () => console.log(`Deficit and Debt Calculator on http://0.0.0.0:${PORT}`));

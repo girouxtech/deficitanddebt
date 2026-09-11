@@ -20,6 +20,12 @@ Then open http://localhost:8080. The only dependency is the official Anthropic S
 3. Press **Run**. The `.replit` file installs the SDK and starts `server.js` on port 8080.
 4. To publish, open **Deploy** and pick **Autoscale** (the `.replit` file already sets it). Static hosting will not work because the side-effects button needs the server.
 
+## Identity federation instead of an API key
+
+The server builds the Anthropic client with no key argument, so it uses the SDK's credential chain. On a host that mints OIDC identity tokens for the running app (Google Cloud Run, AWS, Azure, Kubernetes, GitHub Actions), you can skip the API key entirely: set up Workload Identity Federation in the Claude Console and inject `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`, `ANTHROPIC_IDENTITY_TOKEN_FILE` (and `ANTHROPIC_WORKSPACE_ID` if the rule spans workspaces). Leave `ANTHROPIC_API_KEY` unset, since it outranks federation.
+
+Replit does not mint OIDC tokens for deployed apps. Its Repl Identity token is a PASETO signed with Ed25519 and has no OIDC issuer or JWKS endpoint, so Anthropic cannot verify it. On Replit, keep the API key in Secrets; scope it to one workspace with a spending limit.
+
 ## How the Claude call is hardened
 
 - The API key lives only on the server. The browser calls `POST /api/analyze` on the same origin.
