@@ -71,6 +71,60 @@ function readBody(req, limit) {
   });
 }
 
+// ---- Jobs: the Claude call runs in the background and the browser polls for it.
+// A single request held open for a minute or more gets cut by hosting proxies
+// (Replit included), which loses the answer after the tokens were already billed.
+const jobs = new Map();          // id -> { status, at, analysis?, error? }
+const JOB_TTL = 15 * 60 * 1000;
+function pruneJobs() {
+  const now = Date.now();
+  for (const [id, j] of jobs) if (now - j.at > JOB_TTL) jobs.delete(id);
+  while (jobs.size > 200) jobs.delete(jobs.keys().next().value);
+}
+
+async function runClaude(job, request, key) {
+  const t0 = Date.now();
+  inFlight++;
+  try {
+    const client = new Anthropic({ timeout: 180 * 1000, maxRetries: 1 });
+    const stream = client.messages.stream({
+      model: MODEL,
+      max_tokens: 8000,
+      system: [{ type: 'text', text: request.system, cache_control: { type: 'ephemeral' } }],
+      messages: [{ role: 'user', content: request.user }],
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: request.schema } }
+    });
+    const response = await stream.finalMessage();
+    const secs = ((Date.now() - t0) / 1000).toFixed(1);
+    const u = response.usage || {};
+    console.log('[analyze] job ' + job.id + ' finished in ' + secs + 's, stop_reason=' + response.stop_reason + ', input=' + u.input_tokens + ', output=' + u.output_tokens);
+    if (response.stop_reason === 'refusal') return fail(job, 'Claude declined to analyze this scenario.');
+    if (response.stop_reason === 'max_tokens') return fail(job, 'The answer ran too long. Try again.');
+    const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
+    let parsed = null;
+    try { parsed = JSON.parse(text); } catch (e) { parsed = null; }
+    const analysis = Analysis.validateAnalysis(parsed);
+    if (!analysis) { console.error('[analyze] job ' + job.id + ' unexpected reply shape: ' + text.slice(0, 300)); return fail(job, 'The answer did not match the expected shape.'); }
+    cache.set(key, { at: Date.now(), data: analysis });
+    if (cache.size > 200) cache.delete(cache.keys().next().value);
+    job.status = 'done'; job.analysis = analysis; job.at = Date.now();
+  } catch (err) {
+    const secs = ((Date.now() - t0) / 1000).toFixed(1);
+    if (Anthropic && err instanceof Anthropic.RateLimitError) return fail(job, 'Claude is rate limited right now. Try again shortly.', err, secs);
+    if (Anthropic && err instanceof Anthropic.AuthenticationError) return fail(job, 'Analysis is misconfigured on this server.', err, secs);
+    if (Anthropic && err instanceof Anthropic.APIError) return fail(job, 'Claude could not be reached.', err, secs);
+    if (err && /identity token|federation|ENOENT|credential/i.test(String(err.message || ''))) return fail(job, 'Analysis is misconfigured on this server.', err, secs);
+    return fail(job, 'Something went wrong.', err, secs);
+  } finally {
+    inFlight--;
+  }
+}
+function fail(job, message, err, secs) {
+  if (err) console.error('[analyze] job ' + job.id + ' failed after ' + secs + 's: ' + (err.status ? err.status + ' ' : '') + (err.message || err));
+  else console.warn('[analyze] job ' + job.id + ': ' + message);
+  job.status = 'error'; job.error = message; job.at = Date.now();
+}
+
 async function handleAnalyze(req, res) {
   if (!Anthropic || !hasCredentials()) return send(res, 503, { error: 'Analysis is not configured on this server.' });
   if (req.headers['x-requested-with'] !== 'deficit-calculator') return send(res, 400, { error: 'Bad request.' });
@@ -94,39 +148,21 @@ async function handleAnalyze(req, res) {
   if (hit && Date.now() - hit.at < CACHE_TTL) return send(res, 200, { analysis: hit.data, model: MODEL, cached: true });
 
   if (inFlight >= MAX_IN_FLIGHT) return send(res, 503, { error: 'Busy. Try again in a moment.' });
-  inFlight++;
-  try {
-    const client = new Anthropic({ timeout: 120 * 1000, maxRetries: 1 });
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 4000,
-      system: [{ type: 'text', text: request.system, cache_control: { type: 'ephemeral' } }],
-      messages: [{ role: 'user', content: request.user }],
-      output_config: { effort: 'medium', format: { type: 'json_schema', schema: request.schema } }
-    });
-    if (response.stop_reason === 'refusal') return send(res, 502, { error: 'Claude declined to analyze this scenario.' });
-    if (response.stop_reason === 'max_tokens') return send(res, 502, { error: 'The answer ran too long. Try again.' });
-    const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
-    let parsed = null;
-    try { parsed = JSON.parse(text); } catch (e) { parsed = null; }
-    const analysis = Analysis.validateAnalysis(parsed);
-    if (!analysis) return send(res, 502, { error: 'The answer did not match the expected shape.' });
-    cache.set(key, { at: Date.now(), data: analysis });
-    if (cache.size > 200) cache.delete(cache.keys().next().value);
-    return send(res, 200, { analysis, model: MODEL, cached: false });
-  } catch (err) {
-    if (Anthropic && err instanceof Anthropic.RateLimitError) return send(res, 429, { error: 'Claude is rate limited right now. Try again shortly.' });
-    if (Anthropic && err instanceof Anthropic.AuthenticationError) return send(res, 503, { error: 'Analysis is misconfigured on this server.' });
-    if (Anthropic && err instanceof Anthropic.APIError) { console.error('Claude API error', err.status, err.message); return send(res, 502, { error: 'Claude could not be reached.' }); }
-    if (err && /identity token|federation|ENOENT|credential/i.test(String(err.message || ''))) {
-      console.error('credential problem', err.message);
-      return send(res, 503, { error: 'Analysis is misconfigured on this server.' });
-    }
-    console.error('analyze failed', err);
-    return send(res, 500, { error: 'Something went wrong.' });
-  } finally {
-    inFlight--;
-  }
+  pruneJobs();
+  const job = { id: crypto.randomBytes(12).toString('hex'), status: 'pending', at: Date.now() };
+  jobs.set(job.id, job);
+  console.log('[analyze] job ' + job.id + ' started (' + v.opts.length + ' options, model ' + MODEL + ')');
+  runClaude(job, request, key);            // not awaited: the browser polls for the result
+  return send(res, 202, { jobId: job.id });
+}
+
+function handleJob(req, res, id) {
+  if (req.headers['x-requested-with'] !== 'deficit-calculator') return send(res, 400, { error: 'Bad request.' });
+  const job = /^[a-f0-9]{24}$/.test(id) ? jobs.get(id) : null;
+  if (!job) return send(res, 404, { error: 'Unknown or expired job.' });
+  if (job.status === 'pending') return send(res, 200, { status: 'pending', elapsed: Math.round((Date.now() - job.at) / 1000) });
+  if (job.status === 'error') return send(res, 502, { status: 'error', error: job.error });
+  return send(res, 200, { status: 'done', analysis: job.analysis, model: MODEL });
 }
 
 function serveStatic(req, res) {
@@ -148,6 +184,10 @@ http.createServer((req, res) => {
   if (url === '/api/analyze') {
     if (req.method !== 'POST') { res.writeHead(405, { Allow: 'POST' }); return res.end(); }
     return handleAnalyze(req, res);
+  }
+  if (url.startsWith('/api/analyze/')) {
+    if (req.method !== 'GET') { res.writeHead(405, { Allow: 'GET' }); return res.end(); }
+    return handleJob(req, res, url.slice('/api/analyze/'.length));
   }
   if (url === '/api/status') return send(res, 200, { analysis: !!(Anthropic && hasCredentials()) });
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }

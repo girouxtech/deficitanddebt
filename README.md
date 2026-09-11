@@ -20,6 +20,17 @@ Then open http://localhost:8080. The only dependency is the official Anthropic S
 3. Press **Run**. The `.replit` file installs the SDK and starts `server.js` on port 8080.
 4. To publish, open **Deploy** and pick **Autoscale** (the `.replit` file already sets it). Static hosting will not work because the side-effects button needs the server.
 
+## If the summary never comes back
+
+The Claude call takes 20 to 90 seconds, longer than most hosting proxies keep a request open. So the browser submits the job, gets a job id back at once, and polls `GET /api/analyze/<id>` every few seconds until the answer lands. The server logs every job to the console:
+
+```
+[analyze] job 94e9762b... started (4 options, model claude-opus-5)
+[analyze] job 94e9762b... finished in 41.2s, stop_reason=end_turn, input=1843, output=912
+```
+
+If a job shows `finished` but the page shows an error, the log line right after it says why (reply shape, refusal, or max_tokens). If a job never logs `finished` or `failed`, the process was restarted mid-call; on Replit that usually means the Repl went to sleep or was redeployed.
+
 ## Identity federation instead of an API key
 
 The server builds the Anthropic client with no key argument, so it uses the SDK's credential chain. On a host that mints OIDC identity tokens for the running app (Google Cloud Run, AWS, Azure, Kubernetes, GitHub Actions), you can skip the API key entirely: set up Workload Identity Federation in the Claude Console and inject `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`, `ANTHROPIC_IDENTITY_TOKEN_FILE` (and `ANTHROPIC_WORKSPACE_ID` if the rule spans workspaces). Leave `ANTHROPIC_API_KEY` unset, since it outranks federation.
