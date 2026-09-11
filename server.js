@@ -118,6 +118,10 @@ async function handleAnalyze(req, res) {
     if (Anthropic && err instanceof Anthropic.RateLimitError) return send(res, 429, { error: 'Claude is rate limited right now. Try again shortly.' });
     if (Anthropic && err instanceof Anthropic.AuthenticationError) return send(res, 503, { error: 'Analysis is misconfigured on this server.' });
     if (Anthropic && err instanceof Anthropic.APIError) { console.error('Claude API error', err.status, err.message); return send(res, 502, { error: 'Claude could not be reached.' }); }
+    if (err && /identity token|federation|ENOENT|credential/i.test(String(err.message || ''))) {
+      console.error('credential problem', err.message);
+      return send(res, 503, { error: 'Analysis is misconfigured on this server.' });
+    }
     console.error('analyze failed', err);
     return send(res, 500, { error: 'Something went wrong.' });
   } finally {
