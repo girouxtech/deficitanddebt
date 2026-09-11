@@ -139,6 +139,25 @@
     return { system: SYSTEM, user, formatHint: FORMAT_HINT, schema: OUTPUT_SCHEMA, scenario };
   }
 
+  /**
+   * Pull a JSON object out of a model reply. Structured outputs should give bare
+   * JSON, but a reply can still arrive fenced in ```json or with a sentence
+   * around it. Returns the parsed object or null.
+   */
+  function extractJson(text) {
+    if (typeof text !== 'string') return null;
+    const tryParse = t => { try { const v = JSON.parse(t); return v && typeof v === 'object' ? v : null; } catch (e) { return null; } };
+    let t = text.trim();
+    let v = tryParse(t);
+    if (v) return v;
+    t = t.replace(/^\s*```[a-zA-Z]*\s*/, '').replace(/\s*```\s*$/, '');
+    v = tryParse(t);
+    if (v) return v;
+    const a = t.indexOf('{'), b = t.lastIndexOf('}');
+    if (a >= 0 && b > a) return tryParse(t.slice(a, b + 1));
+    return null;
+  }
+
   /** Check a parsed answer against the schema. Returns a clean copy or null. */
   function validateAnalysis(a) {
     if (!a || typeof a !== 'object') return null;
@@ -155,5 +174,5 @@
     return { headline, sideEffects, tradeoffs, watchFor };
   }
 
-  return { RANGES, validateRequest, describeScenario, buildRequest, validateAnalysis, OUTPUT_SCHEMA };
+  return { RANGES, validateRequest, describeScenario, buildRequest, validateAnalysis, extractJson, OUTPUT_SCHEMA };
 });

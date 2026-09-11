@@ -77,7 +77,7 @@ function readBody(req, limit) {
 const jobs = new Map();          // scenario hash -> { id, status, at, analysis?, error?, secs? }
 const recent = [];               // last few outcomes for /api/status (no scenario content)
 function remember(job) {
-  recent.unshift({ at: new Date(job.at).toISOString(), status: job.status, secs: job.secs, error: job.error || null, stop: job.stop || null });
+  recent.unshift({ at: new Date(job.at).toISOString(), status: job.status, secs: job.secs, error: job.error || null, stop: job.stop || null, replyHead: job.sample || null });
   if (recent.length > 5) recent.pop();
 }
 const JOB_TTL = 15 * 60 * 1000;
@@ -96,7 +96,7 @@ async function runClaude(job, request, key) {
       model: MODEL,
       max_tokens: 8000,
       system: [{ type: 'text', text: request.system, cache_control: { type: 'ephemeral' } }],
-      messages: [{ role: 'user', content: request.user }],
+      messages: [{ role: 'user', content: request.user + '\n\n' + request.formatHint }],
       output_config: { effort: 'medium', format: { type: 'json_schema', schema: request.schema } }
     });
     const response = await stream.finalMessage();
@@ -107,10 +107,13 @@ async function runClaude(job, request, key) {
     if (response.stop_reason === 'refusal') return fail(job, 'Claude declined to analyze this scenario.');
     if (response.stop_reason === 'max_tokens') return fail(job, 'The answer ran too long. Try again.');
     const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
-    let parsed = null;
-    try { parsed = JSON.parse(text); } catch (e) { parsed = null; }
+    const parsed = Analysis.extractJson(text);
     const analysis = Analysis.validateAnalysis(parsed);
-    if (!analysis) { console.error('[analyze] job ' + job.id + ' unexpected reply shape: ' + text.slice(0, 300)); return fail(job, 'The answer did not match the expected shape.'); }
+    if (!analysis) {
+      console.error('[analyze] job ' + job.id + ' unexpected reply shape (' + text.length + ' chars): ' + text.slice(0, 400));
+      job.sample = text.slice(0, 200);
+      return fail(job, 'The answer did not match the expected shape.');
+    }
     cache.set(key, { at: Date.now(), data: analysis });
     if (cache.size > 200) cache.delete(cache.keys().next().value);
     job.status = 'done'; job.analysis = analysis; job.at = Date.now(); remember(job);
