@@ -116,10 +116,13 @@
       const spending = spendShare / 100 * spendBase + p.stabilizers / 100 * drag / 100 * potential;
 
       const rate = p.rate0 + p.rateDrift * (t - 1) + p.rateDebtSens / 100 * (ratioPrev - ratio0);
-      const interest = rate / 100 * debt;
+      // No interest is charged once the debt is gone, and the debt never goes
+      // below zero: surpluses beyond that point are not modeled as a sovereign
+      // wealth fund earning interest.
+      const interest = rate / 100 * Math.max(0, debt);
 
       const deficit = spending + interest - revenue;
-      debt = debt + deficit;
+      debt = Math.max(0, debt + deficit);
       const debtPct = debt / gdp * 100;
 
       rows.push({
@@ -179,6 +182,7 @@
       endGdpVsBaseline: (scenario[H].gdp / baseline[H].gdp - 1) * 100,
       endAiGain: scenario[H].aiGain,
       balancedYear: (scenario.slice(1).find(r => r.deficit <= 0) || {}).year || null,
+      debtPaidOffYear: (scenario.slice(1).find(r => r.debt <= 0) || {}).year || null,
       debtStabilizedYear: (function () {
         for (let t = 2; t <= H; t++) if (scenario[t].debtPct <= scenario[t - 1].debtPct) return scenario[t].year;
         return null;

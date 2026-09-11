@@ -442,13 +442,13 @@
     document.querySelectorAll('.end-year').forEach(e => { e.textContent = s.endYear; });
     document.querySelectorAll('.span-years').forEach(e => { e.textContent = (D.baseYear + 1) + '–' + s.endYear; });
 
-    $('kpiDeficit').textContent = fmtPct(s.scenarioDeficitPct);
-    $('kpiDeficitSub').textContent = s.scenarioDeficitPct <= 0
-      ? 'of GDP surplus · baseline ' + fmtPct(s.baselineDeficitPct)
-      : 'of GDP · baseline ' + fmtPct(s.baselineDeficitPct);
+    const surplus = s.scenarioDeficitPct < 0;
+    $('kpiDeficit').textContent = fmtPct(Math.abs(s.scenarioDeficitPct));
+    $('kpiDeficitSub').textContent = (surplus ? 'of GDP surplus' : 'of GDP') + ' · baseline ' + fmtPct(s.baselineDeficitPct) + ' deficit';
+    document.querySelector('#kpis .kpi:first-child .gt-label').firstChild.textContent = (surplus ? 'Surplus in ' : 'Deficit in ');
 
     $('kpiDebt').textContent = Math.round(s.scenarioDebtPct) + '%';
-    $('kpiDebtSub').textContent = 'of GDP · baseline ' + Math.round(s.baselineDebtPct) + '%';
+    $('kpiDebtSub').textContent = (s.debtPaidOffYear ? 'paid off in ' + s.debtPaidOffYear : 'of GDP') + ' · baseline ' + Math.round(s.baselineDebtPct) + '%';
 
     $('kpiSaved').textContent = fmtT(-s.cumulativeDeficitChange, 1);
     $('kpiSavedSub').textContent = Math.abs(s.cumulativeFeedback) >= 0.05
@@ -476,7 +476,8 @@
       if (s.debtStabilizedYear) parts.push('Debt-to-GDP stops rising in ' + s.debtStabilizedYear + '.');
       else parts.push('Debt-to-GDP is still rising in ' + s.endYear + '.');
       if (s.balancedYear) parts.push('The budget balances in ' + s.balancedYear + '.');
-      parts.push('The deficit is ' + fmtPct(sc[H].deficitPct) + ' of GDP in ' + s.endYear + ', against ' + fmtPct(bl[H].deficitPct) + ' on the baseline.');
+      if (s.debtPaidOffYear) parts.push('The debt is paid off in ' + s.debtPaidOffYear + ', after which the model stops accumulating surpluses.');
+      parts.push((sc[H].deficitPct < 0 ? 'The surplus is ' : 'The deficit is ') + fmtPct(Math.abs(sc[H].deficitPct)) + ' of GDP in ' + s.endYear + ', against a ' + fmtPct(bl[H].deficitPct) + ' deficit on the baseline.');
       if (s.peakDrag > 0.05) {
         const shortfall = s.cumulativeFeedback;
         parts.push('Austerity pushes the economy ' + fmtPct(s.peakDrag) + ' below trend at the low point in ' + s.peakDragYear +
