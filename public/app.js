@@ -345,28 +345,24 @@
         analysis = Analysis.validateAnalysis(raw);
         if (!analysis) throw { code: 'bad_shape' };
       } else {
-        const headers = { 'Accept': 'application/json', 'X-Requested-With': 'deficit-calculator' };
-        const r = await fetch('api/analyze', {
+        // The server runs the Claude call in the background. Polling is the same
+        // request again: finished work comes back at once, work in progress says so.
+        const post = () => fetch('api/analyze', {
           method: 'POST',
-          headers: Object.assign({ 'Content-Type': 'application/json' }, headers),
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'deficit-calculator' },
           body: JSON.stringify(analysisPayload())
         });
-        let data = await r.json().catch(() => ({}));
-        if (!r.ok) throw { code: 'server', message: data.error || ('Request failed (' + r.status + ').') };
-        if (r.status === 202 && data.jobId) {
-          // The server runs the Claude call in the background; poll until it lands.
-          const started = Date.now();
-          while (true) {
-            await new Promise(res => setTimeout(res, 2500));
-            const elapsed = Math.round((Date.now() - started) / 1000);
-            status.textContent = 'Asking Claude. ' + elapsed + 's so far. Usually 20 to 90 seconds.';
-            if (elapsed > 240) throw { code: 'server', message: 'Claude took too long. Try again.' };
-            const p = await fetch('api/analyze/' + data.jobId, { headers });
-            data = await p.json().catch(() => ({}));
-            if (p.status === 404) throw { code: 'server', message: 'The request expired. Try again.' };
-            if (!p.ok) throw { code: 'server', message: data.error || ('Request failed (' + p.status + ').') };
-            if (data.status === 'done') break;
-          }
+        const started = Date.now();
+        let data;
+        while (true) {
+          const r = await post();
+          data = await r.json().catch(() => ({}));
+          if (!r.ok) throw { code: 'server', message: data.error || ('Request failed (' + r.status + ').') };
+          if (data.status === 'done') break;
+          const elapsed = Math.round((Date.now() - started) / 1000);
+          if (elapsed > 240) throw { code: 'server', message: 'Claude took too long. Try again.' };
+          status.textContent = 'Asking Claude. ' + elapsed + 's so far. Usually 20 to 90 seconds.';
+          await new Promise(res => setTimeout(res, 2500));
         }
         analysis = Analysis.validateAnalysis(data.analysis);
         if (!analysis) throw { code: 'bad_shape' };

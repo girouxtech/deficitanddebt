@@ -74,11 +74,16 @@ function readBody(req, limit) {
 // ---- Jobs: the Claude call runs in the background and the browser polls for it.
 // A single request held open for a minute or more gets cut by hosting proxies
 // (Replit included), which loses the answer after the tokens were already billed.
-const jobs = new Map();          // id -> { status, at, analysis?, error? }
+const jobs = new Map();          // scenario hash -> { id, status, at, analysis?, error?, secs? }
+const recent = [];               // last few outcomes for /api/status (no scenario content)
+function remember(job) {
+  recent.unshift({ at: new Date(job.at).toISOString(), status: job.status, secs: job.secs, error: job.error || null, stop: job.stop || null });
+  if (recent.length > 5) recent.pop();
+}
 const JOB_TTL = 15 * 60 * 1000;
 function pruneJobs() {
   const now = Date.now();
-  for (const [id, j] of jobs) if (now - j.at > JOB_TTL) jobs.delete(id);
+  for (const [k, j] of jobs) if (now - j.at > JOB_TTL) jobs.delete(k);
   while (jobs.size > 200) jobs.delete(jobs.keys().next().value);
 }
 
@@ -96,6 +101,7 @@ async function runClaude(job, request, key) {
     });
     const response = await stream.finalMessage();
     const secs = ((Date.now() - t0) / 1000).toFixed(1);
+    job.secs = Number(secs); job.stop = response.stop_reason;
     const u = response.usage || {};
     console.log('[analyze] job ' + job.id + ' finished in ' + secs + 's, stop_reason=' + response.stop_reason + ', input=' + u.input_tokens + ', output=' + u.output_tokens);
     if (response.stop_reason === 'refusal') return fail(job, 'Claude declined to analyze this scenario.');
@@ -107,9 +113,10 @@ async function runClaude(job, request, key) {
     if (!analysis) { console.error('[analyze] job ' + job.id + ' unexpected reply shape: ' + text.slice(0, 300)); return fail(job, 'The answer did not match the expected shape.'); }
     cache.set(key, { at: Date.now(), data: analysis });
     if (cache.size > 200) cache.delete(cache.keys().next().value);
-    job.status = 'done'; job.analysis = analysis; job.at = Date.now();
+    job.status = 'done'; job.analysis = analysis; job.at = Date.now(); remember(job);
   } catch (err) {
     const secs = ((Date.now() - t0) / 1000).toFixed(1);
+    job.secs = Number(secs);
     if (Anthropic && err instanceof Anthropic.RateLimitError) return fail(job, 'Claude is rate limited right now. Try again shortly.', err, secs);
     if (Anthropic && err instanceof Anthropic.AuthenticationError) return fail(job, 'Analysis is misconfigured on this server.', err, secs);
     if (Anthropic && err instanceof Anthropic.APIError) return fail(job, 'Claude could not be reached.', err, secs);
@@ -122,15 +129,13 @@ async function runClaude(job, request, key) {
 function fail(job, message, err, secs) {
   if (err) console.error('[analyze] job ' + job.id + ' failed after ' + secs + 's: ' + (err.status ? err.status + ' ' : '') + (err.message || err));
   else console.warn('[analyze] job ' + job.id + ': ' + message);
-  job.status = 'error'; job.error = message; job.at = Date.now();
+  job.status = 'error'; job.error = message; job.at = Date.now(); remember(job);
 }
 
 async function handleAnalyze(req, res) {
   if (!Anthropic || !hasCredentials()) return send(res, 503, { error: 'Analysis is not configured on this server.' });
   if (req.headers['x-requested-with'] !== 'deficit-calculator') return send(res, 400, { error: 'Bad request.' });
   if (!/^application\/json/.test(req.headers['content-type'] || '')) return send(res, 415, { error: 'Send JSON.' });
-  const ip = clientIp(req);
-  if (rateLimited(ip)) return send(res, 429, { error: 'Too many requests. Try again in a few minutes.' });
 
   let body;
   try { body = JSON.parse(await readBody(req, MAX_BODY)); } catch (e) { return send(res, 400, { error: 'Body must be JSON under 16 KB.' }); }
@@ -142,27 +147,27 @@ async function handleAnalyze(req, res) {
   // The server recomputes the scenario itself; nothing the client computed is trusted.
   const result = FiscalModel.run(v.params);
   const request = Analysis.buildRequest(result, OPTIONS, v.opts);
-
   const key = crypto.createHash('sha256').update(MODEL + '\n' + request.user).digest('hex');
+
+  // Same scenario, same answer: finished work is served from the cache.
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL) return send(res, 200, { analysis: hit.data, model: MODEL, cached: true });
+  if (hit && Date.now() - hit.at < CACHE_TTL) return send(res, 200, { status: 'done', analysis: hit.data, model: MODEL, cached: true });
 
-  if (inFlight >= MAX_IN_FLIGHT) return send(res, 503, { error: 'Busy. Try again in a moment.' });
+  // Polling is a re-POST of the same body, so it is idempotent and survives
+  // landing on a different server instance (which would simply start its own job).
   pruneJobs();
-  const job = { id: crypto.randomBytes(12).toString('hex'), status: 'pending', at: Date.now() };
-  jobs.set(job.id, job);
-  console.log('[analyze] job ' + job.id + ' started (' + v.opts.length + ' options, model ' + MODEL + ')');
-  runClaude(job, request, key);            // not awaited: the browser polls for the result
-  return send(res, 202, { jobId: job.id });
-}
+  const existing = jobs.get(key);
+  if (existing && existing.status === 'pending') return send(res, 202, { status: 'pending', elapsed: Math.round((Date.now() - existing.at) / 1000) });
+  if (existing && existing.status === 'error') { jobs.delete(key); return send(res, 502, { status: 'error', error: existing.error }); }
 
-function handleJob(req, res, id) {
-  if (req.headers['x-requested-with'] !== 'deficit-calculator') return send(res, 400, { error: 'Bad request.' });
-  const job = /^[a-f0-9]{24}$/.test(id) ? jobs.get(id) : null;
-  if (!job) return send(res, 404, { error: 'Unknown or expired job.' });
-  if (job.status === 'pending') return send(res, 200, { status: 'pending', elapsed: Math.round((Date.now() - job.at) / 1000) });
-  if (job.status === 'error') return send(res, 502, { status: 'error', error: job.error });
-  return send(res, 200, { status: 'done', analysis: job.analysis, model: MODEL });
+  const ip = clientIp(req);
+  if (rateLimited(ip)) return send(res, 429, { error: 'Too many requests. Try again in a few minutes.' });
+  if (inFlight >= MAX_IN_FLIGHT) return send(res, 503, { error: 'Busy. Try again in a moment.' });
+  const job = { id: key.slice(0, 12), status: 'pending', at: Date.now() };
+  jobs.set(key, job);
+  console.log('[analyze] job ' + job.id + ' started (' + v.opts.length + ' options, model ' + MODEL + ')');
+  runClaude(job, request, key);            // not awaited: the browser polls by re-posting
+  return send(res, 202, { status: 'pending', elapsed: 0 });
 }
 
 function serveStatic(req, res) {
@@ -185,11 +190,14 @@ http.createServer((req, res) => {
     if (req.method !== 'POST') { res.writeHead(405, { Allow: 'POST' }); return res.end(); }
     return handleAnalyze(req, res);
   }
-  if (url.startsWith('/api/analyze/')) {
-    if (req.method !== 'GET') { res.writeHead(405, { Allow: 'GET' }); return res.end(); }
-    return handleJob(req, res, url.slice('/api/analyze/'.length));
-  }
-  if (url === '/api/status') return send(res, 200, { analysis: !!(Anthropic && hasCredentials()) });
+  if (url === '/api/status') return send(res, 200, {
+    analysis: !!(Anthropic && hasCredentials()),
+    sdk: !!Anthropic,
+    credential: process.env.ANTHROPIC_API_KEY ? 'api_key' : process.env.ANTHROPIC_AUTH_TOKEN ? 'auth_token' : hasCredentials() ? 'federation' : 'none',
+    model: MODEL,
+    inFlight,
+    recentJobs: recent
+  });
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
   serveStatic(req, res);
 }).listen(PORT, '0.0.0.0', () => console.log(`Deficit and Debt Calculator on http://0.0.0.0:${PORT}`));

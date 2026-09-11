@@ -22,7 +22,9 @@ Then open http://localhost:8080. The only dependency is the official Anthropic S
 
 ## If the summary never comes back
 
-The Claude call takes 20 to 90 seconds, longer than most hosting proxies keep a request open. So the browser submits the job, gets a job id back at once, and polls `GET /api/analyze/<id>` every few seconds until the answer lands. The server logs every job to the console:
+The Claude call takes 20 to 90 seconds, longer than most hosting proxies keep a request open. So the browser submits the job, gets an immediate "pending" reply, and re-sends the same request every few seconds until the answer lands. Polling by re-sending is idempotent, so it still works when Autoscale routes the poll to a different instance.
+
+First place to look: open `/api/status` on the deployed app. It reports whether a credential was found and which kind, the model, and the last five job outcomes with duration and error text. The server also logs every job to the console:
 
 ```
 [analyze] job 94e9762b... started (4 options, model claude-opus-5)
