@@ -1,0 +1,11 @@
+run = "node server.js"
+entrypoint = "server.js"
+modules = ["nodejs-20"]
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["node", "server.js"]
+
+[[ports]]
+localPort = 8080
+externalPort = 80

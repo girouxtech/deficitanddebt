@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deficit and Debt Calculator · Giroux Technologies</title>
+  <meta name="description" content="Simulate spending cuts and revenue increases against the CBO baseline and see what happens to the yearly deficit, debt held by the public, and GDP.">
+  <link rel="icon" type="image/png" href="gt-monogram-cyan.png">
+  <link rel="stylesheet" href="gt-brand.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="https://girouxtech.com">
+      <img src="gt-monogram-cyan.png" alt="" class="brand-mark" width="36" height="36">
+      <span class="brand-name">Giroux Technologies</span>
+    </a>
+    <nav class="site-nav">
+      <a href="#model">Model</a>
+      <a href="#table">Table</a>
+      <a href="#method">Method</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <div class="hero-inner">
+      <p class="gt-label hero-eyebrow">Federal budget · Fiscal years 2026 to 2035</p>
+      <h1>Deficit and Debt Calculator</h1>
+      <p class="hero-sub">Cut spending, raise revenue, or both. See the yearly deficit, debt held by the public, the growth you give up to get there, and how much AI-driven growth could change the picture.</p>
+    </div>
+  </section>
+
+  <main class="workbench" id="model">
+    <aside class="controls" aria-label="Scenario controls">
+
+      <div class="control-block">
+        <p class="gt-label">Start from a preset</p>
+        <div class="presets" id="presets">
+          <button type="button" class="preset" data-preset="nothing">Do nothing</button>
+          <button type="button" class="preset" data-preset="cuts">Cuts only</button>
+          <button type="button" class="preset" data-preset="revenue">Revenue only</button>
+          <button type="button" class="preset" data-preset="balanced">Half and half</button>
+          <button type="button" class="preset" data-preset="stabilize">Hold debt flat</button>
+        </div>
+      </div>
+
+      <hr class="section-rule">
+
+      <div class="control-block menu-block">
+        <h2 class="control-title">Pick real policies</h2>
+        <p class="control-intro">CBO-scored options, ten-year savings. Checking one sets the sliders below and weights the multipliers by what you chose.</p>
+        <div class="menu-summary" id="menuSummary">
+          <span id="menuTotals">Nothing selected</span>
+          <button type="button" class="link-button" id="menuClear">Clear</button>
+        </div>
+        <div class="menu-groups" id="menuGroups"></div>
+        <p class="field-note">Options can overlap. CBO scores each one alone, so a long list overstates the total.</p>
+      </div>
+      <hr class="section-rule">
+
+      <div class="control-block">
+        <h2 class="control-title">Policy totals</h2>
+
+        <div class="field">
+          <label for="cutPct">Spending cuts <span class="field-help">at full phase-in, % of GDP</span></label>
+          <div class="field-row">
+            <input type="range" id="cutPct" min="0" max="8" step="0.1" value="0">
+            <input type="number" id="cutPct_n" min="0" max="8" step="0.1" value="0">
+          </div>
+          <p class="field-note" id="cutPct_note"></p>
+        </div>
+
+        <div class="field">
+          <label for="revPct">Revenue increases <span class="field-help">at full phase-in, % of GDP</span></label>
+          <div class="field-row">
+            <input type="range" id="revPct" min="0" max="8" step="0.1" value="0">
+            <input type="number" id="revPct_n" min="0" max="8" step="0.1" value="0">
+          </div>
+          <p class="field-note" id="revPct_note"></p>
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label for="cutPhase">Cuts phase in over <span class="field-help">years</span></label>
+            <input type="number" id="cutPhase" min="1" max="10" step="1" value="3">
+          </div>
+          <div class="field">
+            <label for="revPhase">Revenue phases in over <span class="field-help">years</span></label>
+            <input type="number" id="revPhase" min="1" max="10" step="1" value="3">
+          </div>
+          <div class="field">
+            <label for="startYear">Policy starts in</label>
+            <select id="startYear"></select>
+          </div>
+          <div class="field">
+            <label for="horizon">Projection length <span class="field-help">years</span></label>
+            <select id="horizon">
+              <option value="10" selected>10</option>
+              <option value="20">20</option>
+              <option value="30">30</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <hr class="section-rule">
+
+      <div class="control-block">
+        <h2 class="control-title">Growth</h2>
+        <p class="control-intro">CBO's baseline assumes about 1.8% real growth a year. Pick how much AI adds on top. A bigger economy collects more revenue on the same tax rates.</p>
+
+        <div class="field">
+          <label for="aiScenario">AI productivity scenario</label>
+          <select id="aiScenario">
+            <option value="none">None. CBO baseline</option>
+            <option value="acemoglu">Skeptical. Acemoglu 2024, +0.1 pp a year</option>
+            <option value="pwbm">Modest. Penn Wharton 2025, peaks at +0.2 pp</option>
+            <option value="middle">Middle. OECD, IMF, Aghion, +0.5 pp a year</option>
+            <option value="goldman">Strong. Goldman Sachs 2023, +1.5 pp from 2027</option>
+            <option value="transformative">Transformative. Brynjolfsson and Korinek, +3 pp a year</option>
+            <option value="custom">Custom</option>
+          </select>
+          <p class="field-note" id="aiNote"></p>
+        </div>
+
+        <div class="field">
+          <label for="aiBoost">Extra real growth from AI <span class="field-help">percentage points a year at full effect</span></label>
+          <div class="field-row">
+            <input type="range" id="aiBoost" min="0" max="5" step="0.1" value="0">
+            <input type="number" id="aiBoost_n" min="0" max="5" step="0.1" value="0">
+          </div>
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label for="aiStart">Boost starts in</label>
+            <select id="aiStart"></select>
+          </div>
+          <div class="field">
+            <label for="aiRamp">Reaches full effect over <span class="field-help">years</span></label>
+            <input type="number" id="aiRamp" min="1" max="15" step="1" value="5">
+          </div>
+        </div>
+      </div>
+
+      <hr class="section-rule">
+
+      <div class="control-block">
+        <h2 class="control-title">How the economy responds</h2>
+        <p class="control-intro">Austerity shrinks demand before it shrinks the deficit. These three dials decide how much and for how long.</p>
+
+        <div class="field">
+          <label for="cutMultiplier">Spending-cut multiplier <span class="field-help">GDP lost per dollar cut</span></label>
+          <div class="field-row">
+            <input type="range" id="cutMultiplier" min="0" max="2.5" step="0.1" value="1.0">
+            <input type="number" id="cutMultiplier_n" min="0" max="2.5" step="0.1" value="1.0">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="revMultiplier">Tax-increase multiplier <span class="field-help">GDP lost per dollar raised</span></label>
+          <div class="field-row">
+            <input type="range" id="revMultiplier" min="0" max="2.5" step="0.1" value="0.5">
+            <input type="number" id="revMultiplier_n" min="0" max="2.5" step="0.1" value="0.5">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="fadeYears">Years until each year's GDP hit fades <span class="field-help">0 = never fades</span></label>
+          <div class="field-row">
+            <input type="range" id="fadeYears" min="0" max="10" step="1" value="4">
+            <input type="number" id="fadeYears_n" min="0" max="10" step="1" value="4">
+          </div>
+        </div>
+      </div>
+
+      <hr class="section-rule">
+
+      <details class="control-block advanced" id="advanced">
+        <summary><h2 class="control-title">Starting point and baseline</h2><span class="summary-hint">CBO February 2026 baseline. Edit if you disagree.</span></summary>
+
+        <div class="field-grid">
+          <div class="field">
+            <label for="gdp0">GDP, FY2025 <span class="field-help">$ trillions</span></label>
+            <input type="number" id="gdp0" min="1" max="200" step="0.1" value="30.3">
+          </div>
+          <div class="field">
+            <label for="debt0">Debt held by public <span class="field-help">$ trillions, end FY2025</span></label>
+            <input type="number" id="debt0" min="0" max="500" step="0.1" value="30.2">
+          </div>
+          <div class="field">
+            <label for="growth">Nominal GDP growth <span class="field-help">% per year</span></label>
+            <input type="number" id="growth" min="-5" max="15" step="0.1" value="3.9">
+          </div>
+          <div class="field">
+            <label for="rate0">Interest rate on debt <span class="field-help">% effective, FY2026</span></label>
+            <input type="number" id="rate0" min="0" max="20" step="0.05" value="3.44">
+          </div>
+          <div class="field">
+            <label for="revenue0">Revenue <span class="field-help">% of GDP, FY2026</span></label>
+            <input type="number" id="revenue0" min="0" max="60" step="0.1" value="17.7">
+          </div>
+          <div class="field">
+            <label for="spending0">Non-interest spending <span class="field-help">% of GDP, FY2026</span></label>
+            <input type="number" id="spending0" min="0" max="60" step="0.1" value="20.2">
+          </div>
+          <div class="field">
+            <label for="revenueDrift">Revenue drift <span class="field-help">pp per year</span></label>
+            <input type="number" id="revenueDrift" min="-1" max="1" step="0.01" value="0.01">
+          </div>
+          <div class="field">
+            <label for="spendingDrift">Spending drift <span class="field-help">pp per year</span></label>
+            <input type="number" id="spendingDrift" min="-1" max="1" step="0.01" value="-0.03">
+          </div>
+          <div class="field">
+            <label for="rateDrift">Interest rate drift <span class="field-help">pp per year</span></label>
+            <input type="number" id="rateDrift" min="-1" max="1" step="0.01" value="0.05">
+          </div>
+          <div class="field">
+            <label for="rateDebtSens">Rate response to debt <span class="field-help">bp per 1 pp of debt/GDP</span></label>
+            <input type="number" id="rateDebtSens" min="0" max="20" step="0.5" value="0">
+          </div>
+          <div class="field">
+            <label for="stabilizers">Automatic stabilizers <span class="field-help">extra deficit, % GDP per 1% shortfall</span></label>
+            <input type="number" id="stabilizers" min="0" max="1" step="0.05" value="0.15">
+          </div>
+          <div class="field">
+            <label for="aiSpendFollow">Spending that follows AI growth <span class="field-help">share of the extra GDP, 0 to 1</span></label>
+            <input type="number" id="aiSpendFollow" min="0" max="1" step="0.05" value="0.1">
+          </div>
+        </div>
+        <button type="button" class="gt-button gt-button-secondary reset" id="resetBaseline">Restore CBO baseline</button>
+      </details>
+
+      <div class="control-block share">
+        <button type="button" class="gt-button" id="copyLink">Copy link to this scenario</button>
+        <p class="field-note" id="copyNote" aria-live="polite"></p>
+      </div>
+    </aside>
+
+    <section class="results" aria-live="polite">
+      <div class="kpi-row" id="kpis">
+        <div class="kpi">
+          <p class="gt-label">Deficit in <span class="end-year">2035</span></p>
+          <p class="kpi-value" id="kpiDeficit">6.2%</p>
+          <p class="kpi-sub" id="kpiDeficitSub">of GDP · baseline 6.2%</p>
+        </div>
+        <div class="kpi">
+          <p class="gt-label">Debt held by public, <span class="end-year">2035</span></p>
+          <p class="kpi-value" id="kpiDebt">118%</p>
+          <p class="kpi-sub" id="kpiDebtSub">of GDP · baseline 118%</p>
+        </div>
+        <div class="kpi">
+          <p class="gt-label">Deficits avoided, <span class="span-years">2026–2035</span></p>
+          <p class="kpi-value" id="kpiSaved">$0.0T</p>
+          <p class="kpi-sub" id="kpiSavedSub">cumulative vs baseline</p>
+        </div>
+        <div class="kpi">
+          <p class="gt-label">GDP vs baseline, <span class="end-year">2035</span></p>
+          <p class="kpi-value" id="kpiGdp">0.0%</p>
+          <p class="kpi-sub" id="kpiGdpSub">same as the CBO path</p>
+        </div>
+      </div>
+
+      <p class="verdict" id="verdict"></p>
+
+      <section class="analysis" id="analysis" aria-labelledby="analysisTitle">
+        <div class="analysis-head">
+          <div>
+            <h2 id="analysisTitle">What could go wrong</h2>
+            <p class="analysis-intro">Ask Claude for a plain-English read on the side effects of this exact scenario. It sees only your settings and the computed results, never anything typed on this page.</p>
+          </div>
+          <button type="button" class="gt-button" id="analyzeBtn">Ask Claude about side effects</button>
+        </div>
+        <p class="analysis-status" id="analysisStatus" aria-live="polite"></p>
+        <div class="analysis-body" id="analysisBody" hidden></div>
+      </section>
+
+      <div class="chart-grid">
+        <figure class="chart-card" id="chartDebt">
+          <figcaption>
+            <span class="chart-title">Debt held by the public</span>
+            <span class="chart-unit">% of GDP</span>
+          </figcaption>
+          <div class="chart-body"></div>
+          <div class="legend" aria-hidden="true"></div>
+        </figure>
+
+        <figure class="chart-card" id="chartDeficit">
+          <figcaption>
+            <span class="chart-title">Yearly deficit</span>
+            <span class="chart-unit">% of GDP</span>
+          </figcaption>
+          <div class="chart-body"></div>
+          <div class="legend" aria-hidden="true"></div>
+        </figure>
+
+        <figure class="chart-card" id="chartGdp">
+          <figcaption>
+            <span class="chart-title">GDP versus baseline</span>
+            <span class="chart-unit">% difference</span>
+          </figcaption>
+          <div class="chart-body"></div>
+          <div class="legend" aria-hidden="true"></div>
+        </figure>
+
+        <figure class="chart-card" id="chartDecomp">
+          <figcaption>
+            <span class="chart-title">Where the deficit change comes from</span>
+            <span class="chart-unit">$T per year vs baseline, below zero is smaller</span>
+          </figcaption>
+          <div class="chart-body"></div>
+          <div class="legend" aria-hidden="true"></div>
+        </figure>
+      </div>
+
+      <section class="table-section" id="table">
+        <div class="table-head">
+          <h2>Year by year</h2>
+          <div class="segmented" role="tablist" aria-label="Table view">
+            <button type="button" role="tab" data-view="scenario" aria-selected="true">Scenario</button>
+            <button type="button" role="tab" data-view="baseline" aria-selected="false">Baseline</button>
+            <button type="button" role="tab" data-view="diff" aria-selected="false">Difference</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="gt-table data-table" id="yearTable">
+            <thead>
+              <tr>
+                <th scope="col">FY</th>
+                <th scope="col" class="num">GDP</th>
+                <th scope="col" class="num">Revenue</th>
+                <th scope="col" class="num">Spending</th>
+                <th scope="col" class="num">Net interest</th>
+                <th scope="col" class="num">Deficit</th>
+                <th scope="col" class="num">Deficit % GDP</th>
+                <th scope="col" class="num">Debt</th>
+                <th scope="col" class="num">Debt % GDP</th>
+                <th scope="col" class="num">GDP vs baseline</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="table-note">Dollars in trillions, nominal. Spending excludes net interest. FY2025 row is actuals.</p>
+      </section>
+    </section>
+  </main>
+
+  <section class="method" id="method">
+    <div class="method-inner">
+      <h2>How the math works</h2>
+      <hr class="gt-rule">
+      <div class="method-cols">
+        <div>
+          <h3>The budget identity</h3>
+          <p>Each year: deficit = program spending + net interest − revenue. The deficit is added to debt held by the public. Interest next year is the effective rate times that debt. Debt-to-GDP is the debt divided by that year's nominal GDP.</p>
+          <h3>The policy menu</h3>
+          <p>The checklist is CBO's December 2024 deficit-reduction menu, re-estimated by the Committee for a Responsible Federal Budget for fiscal years 2026 through 2035, plus CBO's Social Security solvency options. Each option's ten-year savings is spread across the projection as a share of GDP, then phased in on your schedule. CBO scores each option by itself, so overlapping picks overstate the total.</p>
+          <h3>Growth and AI</h3>
+          <p>CBO's baseline already assumes productivity grows about 1.5% a year. The growth panel adds an AI boost on top, phased in over the years you choose. Extra output is taxed at the going revenue share, while only a small slice of program spending follows it, which reproduces CBO's rule of thumb: productivity growth 0.1 point faster each year trims deficits by about $390 billion over ten years.</p>
+          <p>The scenarios span the published range. Acemoglu puts the ten-year gain near 1% of GDP. Penn Wharton finds 1.5% by 2035 with the annual boost peaking in 2032. Goldman Sachs sees 1.5 points a year of extra productivity growth once adoption is broad. Brynjolfsson and Korinek argue for a sustained lift of several points if AI accelerates research itself. Nobody knows which is right, so the slider is yours.</p>
+          <h3>The side-effects summary</h3>
+          <p>The "Ask Claude" button sends your settings and the computed results to Claude and asks for a summary of side effects in a fixed format. Nothing typed by a visitor is ever included, the server re-checks every number and option against its own list before building the request, and the answer is shown as plain text. Treat it as a first read, not a source.</p>
+          <h3>The baseline</h3>
+          <p>Defaults are set so the do-nothing path tracks CBO's February 2026 outlook: deficit near 5.8% of GDP in 2026 rising toward 6.7% in 2036, debt from 101% to about 120% of GDP, net interest from 3.3% to 4.6% of GDP. Every input is editable.</p>
+        </div>
+        <div>
+          <h3>Why austerity costs growth</h3>
+          <p>A dollar the government stops spending is a dollar someone stops receiving. The multiplier is how much GDP falls per dollar of consolidation in the year it lands. CBO's own range for purchases runs from about 0.5 to 2.5. Tax increases hit demand less because part of the money would have been saved.</p>
+          <p>The hit fades as the economy and the Fed adjust. Set the fade to zero to make it permanent.</p>
+          <h3>How the feedback loop closes</h3>
+          <p>Revenue is collected on the smaller economy, and automatic stabilizers add a little spending. The tool books that against the direct savings, then credits the interest you no longer pay on debt you no longer carry. Debt-to-GDP uses the smaller GDP in the denominator, so cuts can raise the ratio before they lower it.</p>
+        </div>
+      </div>
+      <h3>Sources</h3>
+      <ul class="sources">
+        <li><a href="https://www.cbo.gov/publication/61882">CBO, The Budget and Economic Outlook: 2026 to 2036</a> (February 2026)</li>
+        <li><a href="https://fiscaldata.treasury.gov/static-data/published-reports/mts/MonthlyTreasuryStatement_202509.pdf">Treasury, Final Monthly Treasury Statement for FY2025</a></li>
+        <li><a href="https://www.cbo.gov/publication/60557">CBO, Options for Reducing the Deficit: 2025 to 2034</a> (December 2024)</li>
+        <li>Committee for a Responsible Federal Budget summaries of CBO's options: <a href="https://www.crfb.org/blogs/cbos-revenue-savings-options">revenue</a>, <a href="https://www.crfb.org/blogs/cbos-discretionary-savings-options">discretionary</a>, <a href="https://www.crfb.org/blogs/cbos-medicare-savings-options">Medicare</a>, <a href="https://www.crfb.org/blogs/medicaid-savings-options">Medicaid</a>, <a href="https://www.crfb.org/blogs/cbos-other-mandatory-savings-options">other mandatory</a>, <a href="https://www.crfb.org/blogs/cbos-options-improve-social-security-solvency">Social Security</a></li>
+        <li><a href="https://www.cbo.gov/publication/61249">CBO, How Changes in Economic Conditions Might Affect the Federal Budget: 2025 to 2035</a> (rules of thumb)</li>
+        <li><a href="https://budgetmodel.wharton.upenn.edu/p/2025-09-08-the-projected-impact-of-generative-ai-on-future-productivity-growth/">Penn Wharton Budget Model, The Projected Impact of Generative AI on Future Productivity Growth</a> (2025)</li>
+        <li><a href="https://www.goldmansachs.com/insights/articles/ai-may-start-to-boost-us-gdp-in-2027">Goldman Sachs, AI may start to boost US GDP in 2027</a> and <a href="https://www.gspublishing.com/content/research/en/reports/2023/03/27/d64e052b-0f6e-45d7-967b-d7be35fabd16.html">The Potentially Large Effects of Artificial Intelligence on Economic Growth</a> (2023)</li>
+        <li><a href="https://mitsloan.mit.edu/ideas-made-to-matter/a-new-look-economics-ai">MIT Sloan on Acemoglu, The Simple Macroeconomics of AI</a> (2024)</li>
+        <li><a href="https://tecunningham.github.io/posts/2025-10-19-forecasts-of-AI-growth-extended.html">Tom Cunningham, Forecasts of AI and Economic Growth</a> (compilation, 2025)</li>
+        <li><a href="https://www.cbo.gov/publication/49494">CBO, How CBO Analyzes the Effects of Changes in Federal Fiscal Policies on the Economy</a></li>
+      </ul>
+      <p class="disclaimer">A simulator, not a forecast. It shows how the pieces move together under assumptions you control.</p>
+    </div>
+  </section>
+
+  <footer class="gt-footer">
+    <p>Giroux Technologies · Mount Pleasant, SC · <a href="mailto:chuck@girouxtech.com">chuck@girouxtech.com</a> · <a href="https://girouxtech.com">girouxtech.com</a></p>
+  </footer>
+
+  <script src="model.js"></script>
+  <script src="options.js"></script>
+  <script src="analysis.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

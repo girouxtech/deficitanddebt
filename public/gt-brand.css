@@ -1,0 +1,292 @@
+/*
+ * Giroux Technologies — Brand CSS Tokens
+ *
+ * Drop this file into any HTML deliverable to get GT brand colors and typography.
+ * Reference colors via var(--gt-cyan) etc., not hex strings.
+ *
+ * For HTML emails, inline these values directly — most email clients do not
+ * support CSS custom properties.
+ */
+
+:root {
+  /* === Primary palette === */
+  --gt-cyan: #5CE1E6;        /* Logo mark, primary accent, headers, CTAs */
+  --gt-black: #000000;       /* Body text, primary backgrounds, wordmark */
+  --gt-gray: #9B9B9B;        /* Industrial Gray — secondary text, borders, page numbers */
+
+  /* === Secondary palette === */
+  --gt-warm-white: #F5F0E8;  /* Default body background — adds aged-paper warmth */
+  --gt-brass: #C4913B;       /* Brass Gold — accent rules, sparingly */
+  --gt-charcoal: #1A1A1A;    /* Softer alternative to pure black for large fields */
+
+  /* === Cyan tint (for subtle accents and totals rows) === */
+  --gt-cyan-tint: #E8F9FA;   /* ~15% Cyan on white */
+
+  /* === Typography === */
+  --gt-font-stack: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --gt-font-rail: "Rail Alphabet", "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+  /* Type scale (web/HTML) */
+  --gt-size-display: 64px;
+  --gt-size-h1: 48px;
+  --gt-size-h2: 32px;
+  --gt-size-h3: 24px;
+  --gt-size-h4: 18px;
+  --gt-size-body: 16px;
+  --gt-size-small: 13px;
+  --gt-size-micro: 11px;
+
+  /* Weights — only 4 are used */
+  --gt-weight-light: 300;
+  --gt-weight-regular: 400;
+  --gt-weight-medium: 500;
+  --gt-weight-bold: 700;
+
+  /* Spacing */
+  --gt-space-unit: 8px;
+  --gt-content-max-width: 720px;
+}
+
+/* === Base reset === */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--gt-font-stack);
+  font-size: var(--gt-size-body);
+  font-weight: var(--gt-weight-regular);
+  line-height: 1.5;
+  color: var(--gt-black);
+  background: var(--gt-warm-white);
+  margin: 0;
+}
+
+/* === Typography === */
+
+h1, h2, h3, h4 {
+  font-family: var(--gt-font-stack);
+  margin-top: 0;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: var(--gt-size-h1);
+  font-weight: var(--gt-weight-bold);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: var(--gt-size-h2);
+  font-weight: var(--gt-weight-bold);
+  line-height: 1.2;
+}
+
+h3 {
+  font-size: var(--gt-size-h3);
+  font-weight: var(--gt-weight-medium);
+  line-height: 1.3;
+}
+
+h4 {
+  font-size: var(--gt-size-h4);
+  font-weight: var(--gt-weight-medium);
+  line-height: 1.4;
+}
+
+p {
+  margin: 0 0 1.25em 0;
+}
+
+a {
+  color: var(--gt-black);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--gt-cyan);
+}
+
+small, .gt-caption {
+  font-size: var(--gt-size-small);
+  color: var(--gt-gray);
+}
+
+/* === Layout primitives === */
+
+.gt-container {
+  max-width: var(--gt-content-max-width);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.gt-header {
+  background: var(--gt-warm-white);
+  border-bottom: 1px solid var(--gt-gray);
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gt-logo {
+  height: 32px;
+  width: auto;
+}
+
+.gt-hero {
+  background: var(--gt-black);
+  color: var(--gt-cyan);
+  padding: 96px 24px;
+}
+
+.gt-hero h1 {
+  font-size: var(--gt-size-display);
+  font-weight: var(--gt-weight-light);
+  margin: 0 0 24px 0;
+  max-width: 900px;
+}
+
+.gt-hero .gt-subhead {
+  font-size: var(--gt-size-h3);
+  font-weight: var(--gt-weight-regular);
+  color: #ffffff;
+  max-width: 700px;
+  margin: 0;
+}
+
+.gt-content {
+  max-width: var(--gt-content-max-width);
+  margin: 0 auto;
+  padding: 64px 24px;
+}
+
+.gt-content h2 {
+  margin-top: 48px;
+  margin-bottom: 16px;
+}
+
+.gt-content h3 {
+  margin-top: 32px;
+  margin-bottom: 12px;
+}
+
+.gt-rule {
+  border: none;
+  border-top: 1px solid var(--gt-brass);
+  margin: 32px 0;
+  width: 80px;
+}
+
+/* === Buttons / CTAs === */
+
+.gt-button {
+  display: inline-block;
+  background: var(--gt-cyan);
+  color: var(--gt-black);
+  font-family: var(--gt-font-stack);
+  font-size: 14px;
+  font-weight: var(--gt-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 14px 28px;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.2s, color 0.2s;
+}
+
+.gt-button:hover {
+  background: var(--gt-black);
+  color: var(--gt-cyan);
+}
+
+.gt-button-secondary {
+  background: transparent;
+  color: var(--gt-black);
+  border: 1px solid var(--gt-black);
+}
+
+.gt-button-secondary:hover {
+  background: var(--gt-black);
+  color: var(--gt-warm-white);
+}
+
+/* === Callout / pull quote === */
+
+.gt-callout {
+  background: var(--gt-cyan-tint);
+  border-left: 3px solid var(--gt-brass);
+  padding: 24px;
+  margin: 32px 0;
+}
+
+.gt-pullquote {
+  font-size: var(--gt-size-h3);
+  font-weight: var(--gt-weight-light);
+  font-style: italic;
+  border-left: 3px solid var(--gt-brass);
+  padding-left: 24px;
+  margin: 32px 0;
+  color: var(--gt-black);
+}
+
+/* === Footer === */
+
+.gt-footer {
+  background: var(--gt-black);
+  color: var(--gt-gray);
+  padding: 40px 24px;
+  font-size: var(--gt-size-small);
+  text-align: center;
+}
+
+.gt-footer a {
+  color: var(--gt-cyan);
+  text-decoration: none;
+}
+
+/* === Tables === */
+
+.gt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--gt-font-stack);
+  font-size: var(--gt-size-body);
+}
+
+.gt-table thead th {
+  background: var(--gt-cyan);
+  color: var(--gt-black);
+  font-weight: var(--gt-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: var(--gt-size-small);
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--gt-black);
+}
+
+.gt-table tbody td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--gt-gray);
+  color: var(--gt-black);
+}
+
+.gt-table tbody tr:hover {
+  background: var(--gt-warm-white);
+}
+
+/* === All-caps label === */
+
+.gt-label {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: var(--gt-size-micro);
+  font-weight: var(--gt-weight-medium);
+  color: var(--gt-gray);
+}
